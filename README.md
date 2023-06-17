@@ -1,0 +1,1 @@
+# github_trufflehog_scanner
