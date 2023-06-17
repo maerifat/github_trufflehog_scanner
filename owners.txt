@@ -1,0 +1,2 @@
+khan@gmail.com,https://github.com/trufflesecurity/test_keys
+yara@gmail.com,https://github.com/swisskyrepo/PayloadsAllTheThings
