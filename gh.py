@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import subprocess
 import requests
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 #replace \s+h with ,h in vs code with regex enabled
@@ -10,7 +10,6 @@ with open("owners.txt", "r") as file:
     owners = [line.strip() for line in file if "," in line]
 
 def find_owner(repo):
-    # Read the owners.txt file
 
 # Iterate over the lines and search for the repository URL
     for owner in owners:
@@ -37,20 +36,34 @@ def find_owner(repo):
 
 def get_github_org_repolist(org_name, username, password):
     url = f"https://api.github.com/orgs/{org_name}/repos"
-    response = requests.get(url, auth=(username, password))
-    if response.status_code == 200:
-        repos = response.json()
-        repo_urls = [f"https://github.com/{org_name}/{repo['name']}" for repo in repos]
-        return repo_urls
-    else:
-        print("Error retrieving repositories.")
-        return []
+    repo_urls = []
+    page = 1
+    per_page = 100  # Adjust per_page value as needed
+
+    while True:
+        response = requests.get(url, auth=(username, password), params={"page": page, "per_page": per_page})
+        if response.status_code == 200:
+            repos = response.json()
+            if len(repos) == 0:
+                break
+
+            repo_urls.extend([f"https://github.com/{org_name}/{repo['name']}" for repo in repos])
+            page += 1
+        else:
+            print("Error retrieving repositories.")
+            return []
+
+    return repo_urls
 
 # Example usage
-org_name = "org_here"
-username = "org_email"
-password = "api_key"
+org_name = "orgname"
+username = "mmajeed@company.com"
+password = "ghp_aoqj2eB1SSv************"
 repolist = get_github_org_repolist(org_name, username, password)
+print(f"here is  {repolist}")
+print(len(repolist))
+for rep in repolist:
+    print(rep)
 
 
 def getsecrets(repo):
@@ -88,28 +101,35 @@ def getsecrets(repo):
         Verified = item['Verified']
         Owner = owner_email
         raw = item['Raw']
+        characters_to_mask = len(raw) // 2
+        masked_raw = raw[:-characters_to_mask] + '*' * characters_to_mask
         
         # Append the data as a list
-        data.append([Owner, email, repository, file, commit_url, line_number, secret_location, timestamp, detector_name, Verified, raw])
+        data.append([Owner, email, repository, file, commit_url, line_number, secret_location, timestamp, detector_name, Verified, raw, masked_raw])
     
     return data
 
-repofile = open('repolist.txt','r')
-repolist = repofile.readlines()
+# repofile = open('repolist.txt','r')
+# repolist = repofile.readlines()
 
 
 all_data = []
 
-for repo in repolist:
-    print(repo)
-    data = getsecrets(repo.strip('\n'))
-    #print(f"45 {data}")
-    all_data.extend(data)
-    #print(f" 47 {all_data}")
+max_threads = 10
+
+# Create a thread pool
+with ThreadPoolExecutor(max_workers=max_threads) as executor:
+    # Submit each repository URL for processing
+    futures = [executor.submit(getsecrets, repo.strip('\n')) for repo in repolist]
+
+    # Retrieve the results from the completed futures
+    for future in as_completed(futures):
+        data = future.result()
+        all_data.extend(data)
 
 # Create a pandas DataFrame with the data
-df = pd.DataFrame(all_data, columns=['Owner','email', 'repository', 'file', 'commit_url', 'line_number', 'secret_location' ,'timestamp', 'detector_name','Verified','Raw'])
+df = pd.DataFrame(all_data, columns=['Owner', 'Offender', 'Repository', 'File_Location', 'Commit_URL', 'Line_Number',
+                                     'Secret_Location', 'TimeStamp', 'Detector_Name', 'Verified', 'Raw', 'Masked_Raw'])
 
 # Save the DataFrame to an Excel file
 df.to_excel('output.xlsx', index=False)
-
